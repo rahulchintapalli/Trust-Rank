@@ -12,7 +12,6 @@ def fetch_wikipedia_knowledge(query: str) -> List[Dict[str, Any]]:
     headers = {"User-Agent": "TrustRankSemanticSearch/1.0 (academic research tool)"}
     
     try:
-        # Search for top related Wikipedia articles
         search_url = "https://en.wikipedia.org/w/api.php"
         params = {
             "action": "query",
@@ -31,10 +30,8 @@ def fetch_wikipedia_knowledge(query: str) -> List[Dict[str, Any]]:
             for item in search_items:
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
-                # Clean html tags from snippet
                 cleaned_snippet = snippet.replace("<span class=\"searchmatch\">", "").replace("</span>", "").replace("&quot;", '"')
                 
-                # Fetch full intro summary for the top articles
                 summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(title)}"
                 sum_res = requests.get(summary_url, headers=headers, timeout=2.5)
                 
@@ -57,7 +54,7 @@ def fetch_wikipedia_knowledge(query: str) -> List[Dict[str, Any]]:
                         "category": "news"
                     })
     except Exception as e:
-        print(f"[LiveKnowledge] Wikipedia fetch error: {e}")
+        print(f"[LiveKnowledge] Wikipedia fetch note: {e}")
 
     return results
 
@@ -87,7 +84,6 @@ def fetch_duckduckgo_knowledge(query: str) -> List[Dict[str, Any]]:
                     "category": "news"
                 })
             
-            # Related topics
             for topic in data.get("RelatedTopics", [])[:3]:
                 if isinstance(topic, dict) and "Text" in topic and topic["Text"]:
                     results.append({
@@ -100,39 +96,49 @@ def fetch_duckduckgo_knowledge(query: str) -> List[Dict[str, Any]]:
                         "category": "news"
                     })
     except Exception as e:
-        print(f"[LiveKnowledge] DuckDuckGo fetch error: {e}")
+        print(f"[LiveKnowledge] DuckDuckGo fetch note: {e}")
         
     return results
 
 def generate_llm_evidence(query: str) -> List[Dict[str, Any]]:
     """
-    If OpenAI API key or Gemini API key is configured, query LLM for factual evidence & conflicting claims.
+    Supports Gemini API or OpenAI API if keys are provided in environment.
     """
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            prompt = f"""Generate a JSON array of 3 factual evidence items for search query: "{query}".
+Return ONLY JSON array with objects containing:
+- text: string (detailed factual explanation)
+- source: string (e.g. "Journal of Clinical Medicine" or "Reuters Science")
+- source_type: string ("Academic", "News", "Corpus/Registry", or "Social")
+- evidence_type: string ("peer-reviewed", "clinical trial", "news", or "blog")
+- timestamp: string ("2026-08-01T00:00:00Z")
+- category: string ("vital signs" or "news")
+"""
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=5.0)
+            if resp.status_code == 200:
+                res_data = resp.json()
+                raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                cleaned_json = raw_text.replace("```json", "").replace("```", "").strip()
+                parsed = json.loads(cleaned_json)
+                if isinstance(parsed, list):
+                    for i, item in enumerate(parsed):
+                        item["id"] = f"gemini_{i}_{int(time.time())}"
+                    return parsed
+        except Exception as e:
+            print(f"[LiveKnowledge] Gemini API note: {e}")
+
     openai_key = os.getenv("OPENAI_API_KEY", "")
     if openai_key and openai_key.startswith("sk-"):
         try:
-            prompt = f"""You are a multi-perspective scientific evidence generator for the TrustRank search engine.
-For the user search query: "{query}"
-Generate exactly 3 diverse, highly relevant, factually grounded search results in JSON array format.
-Include:
-1. Academic/scientific consensus with clinical/empirical findings.
-2. Recent news or regulatory perspective.
-3. A commonly circulated conflicting or social claim (to test contradiction detection).
-
-Return ONLY valid JSON array with keys:
-- text: string (detailed factual explanation)
-- source: string (e.g. "Nature Medicine", "Reuters Health", "Online Discussion Forum")
-- source_type: string ("Academic", "News", "Corpus/Registry", or "Social")
-- evidence_type: string ("peer-reviewed", "clinical trial", "news", or "blog")
-- timestamp: string (ISO 8601, e.g. "2026-08-01T00:00:00Z")
-- category: string ("vital signs" or "news" or "demographics")
+            prompt = f"""Generate a JSON object with key "results" containing 3 factual evidence items for query: "{query}".
+Include academic consensus, recent news, and a disputed/social claim.
 """
             resp = requests.post(
                 "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {openai_key}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
                 json={
                     "model": "gpt-4o-mini",
                     "messages": [{"role": "user", "content": prompt}],
@@ -142,16 +148,15 @@ Return ONLY valid JSON array with keys:
                 timeout=5.0
             )
             if resp.status_code == 200:
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
+                content = resp.json()["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
                 items = parsed.get("results", parsed if isinstance(parsed, list) else [])
-                if isinstance(items, list) and len(items) > 0:
+                if isinstance(items, list):
                     for i, it in enumerate(items):
-                        it["id"] = f"llm_{i}_{int(time.time())}"
+                        it["id"] = f"openai_{i}_{int(time.time())}"
                     return items
         except Exception as e:
-            print(f"[LiveKnowledge] OpenAI generation note: {e}")
+            print(f"[LiveKnowledge] OpenAI API note: {e}")
 
     return []
 
@@ -162,17 +167,14 @@ def get_live_evidence_for_query(query: str) -> List[Dict[str, Any]]:
     """
     all_evidence = []
     
-    # 1. Fetch real Wikipedia articles & summaries
     wiki_docs = fetch_wikipedia_knowledge(query)
     if wiki_docs:
         all_evidence.extend(wiki_docs)
 
-    # 2. Fetch DuckDuckGo Instant Answers
     ddg_docs = fetch_duckduckgo_knowledge(query)
     if ddg_docs:
         all_evidence.extend(ddg_docs)
 
-    # 3. Try LLM evidence generation if API key present
     llm_docs = generate_llm_evidence(query)
     if llm_docs:
         all_evidence.extend(llm_docs)
