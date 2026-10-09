@@ -1,6 +1,6 @@
 /**
  * DOM Rendering Module for TrustRank
- * Builds result cards, score bars, radar charts, analytics banners, skeletons, and error alerts.
+ * Builds result cards, score bars, radar charts, analytics banners, skeletons, and interactive user response panels.
  */
 
 function formatRelativeTime(dateStr) {
@@ -28,9 +28,6 @@ function escapeHtml(str) {
   }[c]));
 }
 
-/**
- * Renders Overall Query Trust Analytics Banner.
- */
 function renderAnalyticsBanner(analytics = {}, totalResults = 0) {
   const trustIndex = analytics.overall_trust_index ?? 0;
   const status = analytics.consensus_status || 'Evaluated';
@@ -117,7 +114,11 @@ function renderResultCard(result, index) {
 
   const citations = result.citations || {};
   const apaCitation = citations.apa || `${sourceName} (${pubDate.slice(0,4)}). ${result.text.slice(0,50)}...`;
-  const fb = result.feedback || { trustworthy: 0, disputed: 0 };
+  
+  const fb = result.feedback || {};
+  const avgRating = fb.avg_rating ?? 5.0;
+  const totalReviews = fb.total_reviews ?? 0;
+  const comments = fb.comments || [];
 
   const radarSVG = typeof renderRadarChartSVG === 'function' ? renderRadarChartSVG(scores) : '';
 
@@ -157,12 +158,14 @@ function renderResultCard(result, index) {
           ${renderCompositeCircle(composite)}
           <div>
             <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Composite</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary);">5-Dimension Fusion</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+              ⭐ ${avgRating.toFixed(1)} (${totalReviews} reviews)
+            </div>
           </div>
         </div>
 
         <button class="why-btn" data-action="toggle-why" data-index="${index}">
-          Why this result?
+          Why this result & Respond
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="m6 9 6 6 6-6"/>
           </svg>
@@ -188,13 +191,49 @@ function renderResultCard(result, index) {
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-muted);">
-          <span>Was this result reliable?</span>
-          <div style="display: flex; gap: 0.35rem;">
-            <button class="vote-btn" data-action="vote" data-vote="trustworthy" data-doc-id="${docId}">👍 Trustworthy (${fb.trustworthy || 0})</button>
-            <button class="vote-btn" data-action="vote" data-vote="disputed" data-doc-id="${docId}">👎 Disputed (${fb.disputed || 0})</button>
+        <!-- User Response & Rating Form -->
+        <div class="response-box">
+          <strong style="font-size: 0.8rem; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">💬 Leave a Response / Review:</strong>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div class="star-rating-picker" id="star-picker-${index}" data-rating="5">
+              <span class="active" data-val="1">★</span>
+              <span class="active" data-val="2">★</span>
+              <span class="active" data-val="3">★</span>
+              <span class="active" data-val="4">★</span>
+              <span class="active" data-val="5">★</span>
+            </div>
+
+            <div style="display: flex; gap: 0.35rem;">
+              <button class="vote-btn" data-action="vote" data-vote="trustworthy" data-doc-id="${docId}">👍 Trustworthy (${fb.trustworthy || 0})</button>
+              <button class="vote-btn" data-action="vote" data-vote="disputed" data-doc-id="${docId}">👎 Disputed (${fb.disputed || 0})</button>
+            </div>
+          </div>
+
+          <select class="comment-tag-select" id="tag-select-${index}" style="font-size: 0.75rem; padding: 0.25rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); margin-bottom: 0.35rem;">
+            <option value="accurate">Tag: Accurate / High Quality</option>
+            <option value="outdated">Tag: Outdated Information</option>
+            <option value="misleading">Tag: Misleading / Unproven</option>
+            <option value="well-sourced">Tag: Well-Sourced Clinical Finding</option>
+          </select>
+
+          <textarea class="comment-input" id="comment-text-${index}" rows="2" placeholder="Write your feedback response or note regarding this source..."></textarea>
+          <button class="comment-submit-btn" data-action="submit-response" data-doc-id="${docId}" data-index="${index}">Submit Response</button>
+
+          <!-- User Comments Stream -->
+          <div id="comments-list-${index}" style="margin-top: 0.6rem;">
+            ${comments.map(c => `
+              <div class="user-comment-chip">
+                <div style="display: flex; justify-content: space-between; font-weight: 700; color: var(--text-primary);">
+                  <span>★ ${c.rating}/5 [${escapeHtml(c.tag)}]</span>
+                  <span style="font-size: 0.7rem; color: var(--text-muted);">${c.date || ''}</span>
+                </div>
+                <div style="color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(c.comment)}</div>
+              </div>
+            `).join('')}
           </div>
         </div>
+
       </div>
     </article>
   `;

@@ -23,7 +23,7 @@ load_dotenv()
 app = FastAPI(
     title="TrustRank Reliable Semantic Search API",
     description="Jointly evaluates relevance, source reliability, freshness, contradiction, and evidence strength.",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 # Enable CORS for all origins
@@ -43,7 +43,8 @@ contradiction_detector = ContradictionDetector()
 evidence_scorer = EvidenceScorer()
 composite_ranker = CompositeRanker()
 
-USER_FEEDBACK_STORE: Dict[str, Dict[str, int]] = {}
+# Expanded Feedback Store with Ratings and Comments
+USER_FEEDBACK_STORE: Dict[str, Dict[str, Any]] = {}
 
 @app.on_event("startup")
 def startup_event():
@@ -76,7 +77,10 @@ class DocumentIngestRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     doc_id: str
-    vote: str = Field(..., example="trustworthy")
+    vote: Optional[str] = "trustworthy" # "trustworthy" or "disputed"
+    rating: Optional[int] = Field(5, ge=1, le=5)
+    tag: Optional[str] = "accurate" # "accurate", "outdated", "misleading", "well-sourced"
+    comment: Optional[str] = ""
 
 def generate_citations(source_name: str, text_snippet: str, pub_date: str) -> Dict[str, str]:
     year = pub_date[:4] if pub_date and len(pub_date) >= 4 else "2026"
@@ -96,18 +100,51 @@ def health_check():
 
 @app.post("/feedback")
 def submit_feedback(req: FeedbackRequest):
+    """
+    Submits detailed user feedback (star rating, tag, vote, and comment) for a result.
+    """
     doc_id = req.doc_id
     if doc_id not in USER_FEEDBACK_STORE:
-        USER_FEEDBACK_STORE[doc_id] = {"trustworthy": 0, "disputed": 0}
+        USER_FEEDBACK_STORE[doc_id] = {
+            "trustworthy": 0,
+            "disputed": 0,
+            "ratings_sum": 0,
+            "total_reviews": 0,
+            "comments": []
+        }
 
-    if req.vote.lower() == "trustworthy":
-        USER_FEEDBACK_STORE[doc_id]["trustworthy"] += 1
-    elif req.vote.lower() == "disputed":
-        USER_FEEDBACK_STORE[doc_id]["disputed"] += 1
+    fb = USER_FEEDBACK_STORE[doc_id]
+
+    if req.vote and req.vote.lower() == "trustworthy":
+        fb["trustworthy"] += 1
+    elif req.vote and req.vote.lower() == "disputed":
+        fb["disputed"] += 1
+
+    rating_val = req.rating or 5
+    fb["ratings_sum"] += rating_val
+    fb["total_reviews"] += 1
+
+    if req.comment and req.comment.strip():
+        comment_entry = {
+            "rating": rating_val,
+            "tag": req.tag or "general",
+            "comment": req.comment.strip(),
+            "date": time.strftime("%Y-%m-%d %H:%M")
+        }
+        fb["comments"].insert(0, comment_entry)
+        fb["comments"] = fb["comments"][:5]  # Keep latest 5 comments
+
+    avg_rating = round(fb["ratings_sum"] / fb["total_reviews"], 1)
 
     return {
         "message": f"Feedback recorded for {doc_id}",
-        "stats": USER_FEEDBACK_STORE[doc_id]
+        "stats": {
+            "avg_rating": avg_rating,
+            "total_reviews": fb["total_reviews"],
+            "trustworthy": fb["trustworthy"],
+            "disputed": fb["disputed"],
+            "comments": fb["comments"]
+        }
     }
 
 @app.post("/seed")
@@ -125,7 +162,7 @@ def seed_documents(req: Optional[DocumentIngestRequest] = None):
 @app.post("/search")
 def search_documents(req: SearchRequest):
     """
-    Executes 5-dimension TrustRank Search Pipeline with real-time factual knowledge retrieval.
+    Executes 5-dimension TrustRank Search Pipeline with real-time knowledge retrieval and interactive community feedback.
     """
     start_time = time.time()
     if not req.query.strip():
@@ -143,17 +180,15 @@ def search_documents(req: SearchRequest):
         "w_evid": raw_w.get("w_evid", raw_w.get("wEvi", 0.20))
     }
 
-    # 1. Fetch real-time live knowledge from Wikipedia / DuckDuckGo / LLM for this exact query
+    # 1. Fetch real-time live knowledge from Wikipedia / DuckDuckGo / LLM
     live_docs = get_live_evidence_for_query(req.query)
     
     # 2. Retrieve candidates from local index
     local_retrieved = retriever.search(query=req.query, top_k=top_k * 2)
 
-    # Combine live topic knowledge + relevant local documents
     combined_docs = []
     seen_texts = set()
 
-    # Priority to genuinely retrieved live knowledge for the query
     for d in live_docs:
         t_key = d["text"][:50].lower()
         if t_key not in seen_texts:
@@ -162,20 +197,17 @@ def search_documents(req: SearchRequest):
 
     for d in local_retrieved:
         t_key = d["text"][:50].lower()
-        # Only include local docs if they have meaningful similarity to this query (> 0.30)
         if t_key not in seen_texts and d.get("semantic_score", 0.0) >= 0.30:
             seen_texts.add(t_key)
             combined_docs.append(d)
 
-    # If still empty (e.g. offline and no matches), take top local docs
     if not combined_docs:
         combined_docs = local_retrieved
 
     total_candidates = len(combined_docs)
 
-    # 3. Calculate dense & lexical relevance score for each doc against query
+    # 3. Calculate dense & lexical relevance score for each doc
     for doc in combined_docs:
-        # Re-verify semantic similarity with sentence transformer
         query_vec = retriever.encode_query_cached(req.query)
         doc_vec = retriever.model.encode(doc["text"], normalize_embeddings=True)
         import numpy as np
@@ -192,8 +224,8 @@ def search_documents(req: SearchRequest):
         rel_data = reliability_scorer.score(doc, doc.get("semantic_score", 0.0))
         evid_data = evidence_scorer.score(doc)
 
-        fb = USER_FEEDBACK_STORE.get(doc["id"], {"trustworthy": 0, "disputed": 0})
-        user_boost = (fb["trustworthy"] * 0.05) - (fb["disputed"] * 0.08)
+        fb = USER_FEEDBACK_STORE.get(doc["id"], {"trustworthy": 0, "disputed": 0, "ratings_sum": 0, "total_reviews": 0, "comments": []})
+        user_boost = (fb.get("trustworthy", 0) * 0.05) - (fb.get("disputed", 0) * 0.08)
         adj_rel = min(1.0, max(0.0, rel_data["reliability_score"] + user_boost))
 
         merged_doc = dict(doc)
@@ -253,6 +285,10 @@ def search_documents(req: SearchRequest):
 
         citations = generate_citations(doc.get("source", "Unknown"), doc.get("text", ""), pub_date)
 
+        fb = doc.get("feedback_stats", {})
+        total_rev = fb.get("total_reviews", 0)
+        avg_rat = round(fb.get("ratings_sum", 0) / total_rev, 1) if total_rev > 0 else 5.0
+
         formatted_results.append({
             "id": doc.get("id"),
             "text": doc.get("text", ""),
@@ -279,7 +315,13 @@ def search_documents(req: SearchRequest):
             "contradictionDetails": contra_details,
             "explanation": explanation,
             "citations": citations,
-            "feedback": doc.get("feedback_stats", {"trustworthy": 0, "disputed": 0})
+            "feedback": {
+                "avg_rating": avg_rat,
+                "total_reviews": total_rev,
+                "trustworthy": fb.get("trustworthy", 0),
+                "disputed": fb.get("disputed", 0),
+                "comments": fb.get("comments", [])
+            }
         })
 
     avg_trust = (total_composite_sum / len(final_results)) if final_results else 0.0

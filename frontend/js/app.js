@@ -1,6 +1,6 @@
 /**
  * Main Application Controller for TrustRank Frontend
- * Manages search execution, filtering, sorting, report export, custom claim ingestion, and voting.
+ * Manages search execution, filtering, sorting, report export, custom claim ingestion, star ratings, and response feedback.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -106,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Apply Source Type Filter
     let filtered = currentRawResults;
     if (activeFilter !== 'all') {
       filtered = currentRawResults.filter(r => {
@@ -115,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Apply Sorting
     const sortKey = sortSelect.value;
     const sorted = [...filtered].sort((a, b) => {
       const sA = a.scores || {};
@@ -134,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Filter Pills Event Handling
   document.querySelectorAll('.filter-pill').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
@@ -175,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!currentRawResults || currentRawResults.length === 0) {
         resultsGrid.innerHTML = renderEmptyState(query);
       } else {
-        // Show Analytics Synthesis Banner & Filter Controls
         analyticsSection.style.display = 'block';
         analyticsContainer.innerHTML = renderAnalyticsBanner(currentAnalytics, currentRawResults.length);
         filterBar.style.display = 'flex';
@@ -206,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   /* ============================================
-     5. REPORT EXPORT (JSON / Markdown)
+     5. REPORT EXPORT (JSON)
      ============================================ */
   exportBtn.addEventListener('click', () => {
     if (!currentRawResults || currentRawResults.length === 0) return;
@@ -272,9 +268,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   /* ============================================
-     7. CARD INTERACTION DELEGATION (Vote / Copy Citation)
+     7. STAR RATING & RESPONSE SUBMISSION HANDLERS
      ============================================ */
   resultsGrid.addEventListener('click', async (e) => {
+    // Star rating picker click
+    const starSpan = e.target.closest('.star-rating-picker span');
+    if (starSpan) {
+      const picker = starSpan.closest('.star-rating-picker');
+      const val = parseInt(starSpan.dataset.val, 10);
+      picker.dataset.rating = val;
+      picker.querySelectorAll('span').forEach(s => {
+        const sVal = parseInt(s.dataset.val, 10);
+        s.classList.toggle('active', sVal <= val);
+      });
+      return;
+    }
+
     const target = e.target.closest('[data-action]');
     if (!target) return;
 
@@ -307,6 +316,60 @@ document.addEventListener('DOMContentLoaded', () => {
         target.disabled = true;
       } catch (err) {
         console.warn('Feedback error:', err);
+      }
+    } else if (action === 'submit-response') {
+      const docId = target.dataset.docId;
+      const ratingVal = parseInt(document.getElementById(`star-picker-${index}`).dataset.rating || '5', 10);
+      const tagVal = document.getElementById(`tag-select-${index}`).value;
+      const commentVal = document.getElementById(`comment-text-${index}`).value.trim();
+
+      if (!commentVal) {
+        alert('Please enter your feedback response comment before submitting.');
+        return;
+      }
+
+      target.disabled = true;
+      target.textContent = 'Submitting...';
+
+      try {
+        const resp = await fetch('http://localhost:8000/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            doc_id: docId,
+            rating: ratingVal,
+            tag: tagVal,
+            comment: commentVal
+          })
+        });
+
+        if (resp.ok) {
+          const resData = await resp.json();
+          const commentsList = document.getElementById(`comments-list-${index}`);
+          const dateStr = new Date().toLocaleDateString();
+          
+          const newChip = document.createElement('div');
+          newChip.className = 'user-comment-chip';
+          newChip.innerHTML = `
+            <div style="display: flex; justify-content: space-between; font-weight: 700; color: var(--text-primary);">
+              <span>★ ${ratingVal}/5 [${tagVal}]</span>
+              <span style="font-size: 0.7rem; color: var(--text-muted);">${dateStr}</span>
+            </div>
+            <div style="color: var(--text-secondary); margin-top: 0.2rem;">${commentVal.replace(/[&<>"']/g, '')}</div>
+          `;
+          commentsList.prepend(newChip);
+
+          document.getElementById(`comment-text-${index}`).value = '';
+          target.textContent = '✅ Response Saved!';
+          setTimeout(() => {
+            target.disabled = false;
+            target.textContent = 'Submit Response';
+          }, 2000);
+        }
+      } catch (err) {
+        alert('Failed to submit response: ' + err.message);
+        target.disabled = false;
+        target.textContent = 'Submit Response';
       }
     }
   });
