@@ -1,0 +1,16 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+streamlit>=1.25.0
+chromadb>=0.4.10
+sentence-transformers>=2.2.2
+transformers>=4.30.0
+torch>=2.0.0
+rank_bm25>=0.2.2
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0
+pandas>=2.0.0
+# Optional specialized packages:
+# cats-scoring
+# contrachecker

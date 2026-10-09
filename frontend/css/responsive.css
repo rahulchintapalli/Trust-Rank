@@ -1,0 +1,63 @@
+/* ============================================
+   RESPONSIVE BREAKPOINTS & MOBILE OPTIMIZATIONS
+   ============================================ */
+
+/* Mobile Phones (< 640px) */
+@media (max-width: 639px) {
+  .header-container {
+    padding: 0.875rem 1rem;
+  }
+  
+  .brand-tagline {
+    display: none;
+  }
+  
+  .hero-section {
+    margin: 2rem auto 1rem;
+    padding: 0 1rem;
+  }
+  
+  .hero-title {
+    font-size: 1.65rem;
+  }
+  
+  .search-container {
+    padding: 0 1rem;
+  }
+  
+  .search-form {
+    flex-direction: column;
+  }
+  
+  .search-btn {
+    width: 100%;
+  }
+  
+  .results-section {
+    padding: 0 1rem 3rem;
+  }
+  
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .card-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+
+/* Tablets (640px - 1024px) */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .results-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktops (> 1024px) */
+@media (min-width: 1024px) {
+  .results-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+    container_name: trustrank_app
+    ports:
+      - "8000:8000"
+    environment:
+      - BACKEND_URL=http://localhost:8000
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8001
+    volumes:
+      - ./chroma_db:/app/chroma_db
+    depends_on:
+      - chromadb
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: trustrank_chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./chroma_db:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
+    restart: unless-stopped

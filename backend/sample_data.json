@@ -1,0 +1,47 @@
+[
+  {
+    "id": "doc_001",
+    "text": "A multi-center double-blind randomized clinical trial of 5,000 patients demonstrated that Treatment X reduces cardiovascular mortality by 34% compared to placebo (p < 0.001).",
+    "source": "New England Journal of Medicine",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-09-15T12:00:00Z",
+    "category": "vital signs"
+  },
+  {
+    "id": "doc_002",
+    "text": "Preliminary observational study indicates Treatment X shows no significant improvement in mortality outcomes for heart failure patients over a 12-month period.",
+    "source": "Journal of Clinical Cardiology",
+    "source_type": "Academic",
+    "evidence_type": "clinical trial",
+    "timestamp": "2026-08-10T09:30:00Z",
+    "category": "vital signs"
+  },
+  {
+    "id": "doc_003",
+    "text": "Health Blog Post: Treatment X causes severe dangerous side effects and has zero therapeutic benefits according to unverified online reports.",
+    "source": "Daily Wellness Blog",
+    "source_type": "Social",
+    "evidence_type": "blog",
+    "timestamp": "2024-01-15T08:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_004",
+    "text": "Official CDC Registry: Global population demographics confirm female life expectancy averages 74.2 years while male life expectancy is 69.8 years.",
+    "source": "CDC Demographics Registry",
+    "source_type": "Corpus/Registry",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2020-05-01T00:00:00Z",
+    "category": "demographics"
+  },
+  {
+    "id": "doc_005",
+    "text": "Tech Global News: Quantum computing breakthrough achieves 1,000 logical qubits error-corrected operation, setting a new industry milestone.",
+    "source": "TechCrunch World",
+    "source_type": "News",
+    "evidence_type": "news",
+    "timestamp": "2026-10-08T14:20:00Z",
+    "category": "news"
+  }
+]
