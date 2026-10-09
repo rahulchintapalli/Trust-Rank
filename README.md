@@ -1,3 +1,13 @@
+---
+title: TrustRank Reliable Search
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # TrustRank: Reliable Semantic Search System 🛡️
 
 TrustRank is a Reliable Semantic Search web application featuring a modern HTML5/CSS3/JavaScript frontend and a FastAPI backend that jointly evaluates five critical dimensions for information retrieval and ranking:
