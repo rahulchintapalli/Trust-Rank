@@ -19,29 +19,92 @@
   },
   {
     "id": "doc_003",
-    "text": "Health Blog Post: Treatment X causes severe dangerous side effects and has zero therapeutic benefits according to unverified online reports.",
-    "source": "Daily Wellness Blog",
-    "source_type": "Social",
-    "evidence_type": "blog",
-    "timestamp": "2024-01-15T08:00:00Z",
-    "category": "news"
+    "text": "Metformin is considered a safe and effective first-line therapy during pregnancy for gestational diabetes according to a 2024 systematic review in AJOG.",
+    "source": "American Journal of Obstetrics & Gynecology",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-05-12T00:00:00Z",
+    "category": "vital signs"
   },
   {
     "id": "doc_004",
+    "text": "Cancer research update: Targeted immunotherapy and mRNA-based cancer vaccines have achieved complete remission in 62% of advanced melanoma clinical trial subjects.",
+    "source": "Nature Cancer Research",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-09-01T10:00:00Z",
+    "category": "vital signs"
+  },
+  {
+    "id": "doc_005",
+    "text": "Social post claim: Cancer has been 100% cured by secret herbal remedies that pharmaceutical companies are suppressing online.",
+    "source": "Unverified Wellness Forum",
+    "source_type": "Social",
+    "evidence_type": "blog",
+    "timestamp": "2026-01-10T00:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_006",
     "text": "Official CDC Registry: Global population demographics confirm female life expectancy averages 74.2 years while male life expectancy is 69.8 years.",
     "source": "CDC Demographics Registry",
     "source_type": "Corpus/Registry",
     "evidence_type": "peer-reviewed",
-    "timestamp": "2020-05-01T00:00:00Z",
+    "timestamp": "2025-05-01T00:00:00Z",
     "category": "demographics"
   },
   {
-    "id": "doc_005",
+    "id": "doc_007",
     "text": "Tech Global News: Quantum computing breakthrough achieves 1,000 logical qubits error-corrected operation, setting a new industry milestone.",
     "source": "TechCrunch World",
     "source_type": "News",
     "evidence_type": "news",
     "timestamp": "2026-10-08T14:20:00Z",
     "category": "news"
+  },
+  {
+    "id": "doc_008",
+    "text": "Artificial Intelligence Research: Large Language Models with retrieval-augmented generation (RAG) reduce factual hallucinations by over 78% in benchmark evaluations.",
+    "source": "IEEE Transactions on AI",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-07-15T00:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_009",
+    "text": "Python 3.13 introduces a GIL-free build mode (free-threaded CPython) enabling true multi-core parallel execution for CPU-bound Python applications.",
+    "source": "Python Software Foundation",
+    "source_type": "Corpus/Registry",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-04-01T00:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_010",
+    "text": "NASA James Webb Space Telescope confirms spectroscopic evidence of carbon dioxide and water vapor in the atmosphere of habitable-zone exoplanet K2-18b.",
+    "source": "NASA Astrophysical Journal",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-08-20T00:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_011",
+    "text": "Global Renewable Energy Report: Solar and wind generation surpassed coal in global electricity output for the first time in 2025, accounting for 38% of total generation.",
+    "source": "International Energy Agency",
+    "source_type": "Corpus/Registry",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-03-10T00:00:00Z",
+    "category": "news"
+  },
+  {
+    "id": "doc_012",
+    "text": "Sleep science study: Consistent 7 to 8 hours of sleep per night lowers cognitive decline risk by 42% in adults over age 50 compared to chronic short sleep.",
+    "source": "Journal of Neuroscience",
+    "source_type": "Academic",
+    "evidence_type": "peer-reviewed",
+    "timestamp": "2026-06-18T00:00:00Z",
+    "category": "vital signs"
   }
 ]

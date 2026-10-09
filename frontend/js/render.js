@@ -1,11 +1,8 @@
 /**
  * DOM Rendering Module for TrustRank
- * Builds result cards, score bars, circular gauges, skeletons, and error alerts.
+ * Builds result cards, score bars, radar charts, analytics banners, skeletons, and error alerts.
  */
 
-/**
- * Calculates relative time string ("2 days ago", "today", etc.)
- */
 function formatRelativeTime(dateStr) {
   if (!dateStr) return 'recent';
   try {
@@ -24,9 +21,6 @@ function formatRelativeTime(dateStr) {
   }
 }
 
-/**
- * Escapes HTML characters to prevent XSS.
- */
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/[&<>"']/g, c => ({
@@ -35,8 +29,34 @@ function escapeHtml(str) {
 }
 
 /**
- * Renders SVG composite progress circle.
+ * Renders Overall Query Trust Analytics Banner.
  */
+function renderAnalyticsBanner(analytics = {}, totalResults = 0) {
+  const trustIndex = analytics.overall_trust_index ?? 0;
+  const status = analytics.consensus_status || 'Evaluated';
+  const flagged = analytics.flagged_contradictions ?? 0;
+  const color = getScoreColor(trustIndex / 100);
+
+  return `
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="background: ${color}; color: #fff; font-size: 1.4rem; font-weight: 800; padding: 0.5rem 1rem; border-radius: var(--radius);">
+          ${trustIndex}<span style="font-size: 0.8rem;">/100</span>
+        </div>
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Overall Trust Index</div>
+          <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(status)}</div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+        <div>📊 <strong>${totalResults}</strong> Verified Sources</div>
+        <div>⚠️ <strong>${flagged}</strong> Contradiction Risk Flag(s)</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderCompositeCircle(score) {
   const radius = 20;
   const circumference = 2 * Math.PI * radius;
@@ -59,9 +79,6 @@ function renderCompositeCircle(score) {
   `;
 }
 
-/**
- * Renders individual score bar row.
- */
 function renderScoreBar(label, value, key, invert = false) {
   const color = getScoreColor(value, invert);
   const pct = Math.round(value * 100);
@@ -79,10 +96,8 @@ function renderScoreBar(label, value, key, invert = false) {
   `;
 }
 
-/**
- * Renders single result card HTML string.
- */
 function renderResultCard(result, index) {
+  const docId = result.id || `doc_${index}`;
   const scores = result.scores || {};
   const relevance = scores.relevance ?? 0;
   const reliability = scores.reliability ?? 0;
@@ -100,8 +115,14 @@ function renderResultCard(result, index) {
   const alertDetails = result.contradiction_details || result.contradictionDetails || 'Claim conflicts with top medical or empirical consensus.';
   const explanation = result.explanation || 'Evaluated across 5 TrustRank dimensions.';
 
+  const citations = result.citations || {};
+  const apaCitation = citations.apa || `${sourceName} (${pubDate.slice(0,4)}). ${result.text.slice(0,50)}...`;
+  const fb = result.feedback || { trustworthy: 0, disputed: 0 };
+
+  const radarSVG = typeof renderRadarChartSVG === 'function' ? renderRadarChartSVG(scores) : '';
+
   return `
-    <article class="result-card" data-index="${index}">
+    <article class="result-card" data-index="${index}" data-doc-id="${docId}">
       <div class="card-header">
         <div>
           <span class="source-badge ${sourceType}">${sourceType}</span>
@@ -149,20 +170,36 @@ function renderResultCard(result, index) {
       </div>
 
       <div class="why-panel" id="why-panel-${index}">
-        <strong style="color: var(--text-primary); display: block; margin-bottom: 0.25rem;">Score Explanation:</strong>
-        <p style="color: var(--text-secondary); margin-bottom: 0.5rem;">${escapeHtml(explanation)}</p>
-        ${hasAlert ? `
-          <strong style="color: var(--danger-red); display: block; margin-bottom: 0.25rem;">Contradiction Flag Details:</strong>
-          <p style="color: var(--danger-red);">${escapeHtml(alertDetails)}</p>
-        ` : ''}
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+          <strong style="color: var(--text-primary);">5-Axis Profile & Breakdown:</strong>
+          <div style="display: flex; align-items: center; gap: 0.35rem;">
+            <button class="citation-btn" data-action="copy-citation" data-citation="${escapeHtml(apaCitation)}">📋 Copy APA Citation</button>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+          ${radarSVG ? `<div style="flex-shrink: 0;">${radarSVG}</div>` : ''}
+          <div style="flex: 1;">
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.5rem;">${escapeHtml(explanation)}</p>
+            ${hasAlert ? `
+              <strong style="color: var(--danger-red); font-size: 0.8rem; display: block; margin-bottom: 0.25rem;">Contradiction Flag Details:</strong>
+              <p style="color: var(--danger-red); font-size: 0.8rem;">${escapeHtml(alertDetails)}</p>
+            ` : ''}
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-muted);">
+          <span>Was this result reliable?</span>
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="vote-btn" data-action="vote" data-vote="trustworthy" data-doc-id="${docId}">👍 Trustworthy (${fb.trustworthy || 0})</button>
+            <button class="vote-btn" data-action="vote" data-vote="disputed" data-doc-id="${docId}">👎 Disputed (${fb.disputed || 0})</button>
+          </div>
+        </div>
       </div>
     </article>
   `;
 }
 
-/**
- * Renders skeleton card placeholdres while fetching.
- */
 function renderSkeletons(count = 3) {
   return Array(count).fill(0).map(() => `
     <div class="skeleton-card">
@@ -175,9 +212,6 @@ function renderSkeletons(count = 3) {
   `).join('');
 }
 
-/**
- * Renders empty state placeholder.
- */
 function renderEmptyState(query = '') {
   return `
     <div style="text-align: center; padding: 4rem 1rem; color: var(--text-secondary);">
@@ -195,9 +229,6 @@ function renderEmptyState(query = '') {
   `;
 }
 
-/**
- * Renders error alert box.
- */
 function renderErrorState(message) {
   return `
     <div style="background-color: var(--danger-red-light); border: 1px solid var(--danger-red); border-radius: var(--radius); padding: 1.25rem; color: var(--danger-red); margin-bottom: 2rem;">

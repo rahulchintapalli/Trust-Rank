@@ -15,6 +15,7 @@ from backend.freshness_filter import FreshnessFilter
 from backend.contradiction_detector import ContradictionDetector
 from backend.evidence_scorer import EvidenceScorer
 from backend.composite_ranker import CompositeRanker
+from backend.live_knowledge import get_live_evidence_for_query
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,7 @@ load_dotenv()
 app = FastAPI(
     title="TrustRank Reliable Semantic Search API",
     description="Jointly evaluates relevance, source reliability, freshness, contradiction, and evidence strength.",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # Enable CORS for all origins
@@ -42,7 +43,8 @@ contradiction_detector = ContradictionDetector()
 evidence_scorer = EvidenceScorer()
 composite_ranker = CompositeRanker()
 
-# Seed default dataset on startup if ChromaDB collection is empty
+USER_FEEDBACK_STORE: Dict[str, Dict[str, int]] = {}
+
 @app.on_event("startup")
 def startup_event():
     seed_data_path = os.path.join(os.path.dirname(__file__), "sample_data.json")
@@ -51,14 +53,14 @@ def startup_event():
             with open(seed_data_path, "r", encoding="utf-8") as f:
                 documents = json.load(f)
             retriever.index_documents(documents)
-            print(f"[FastAPI] Successfully initialized ChromaDB with {len(documents)} sample documents.")
+            print(f"[FastAPI] Successfully indexed {len(documents)} initial corpus documents.")
         except Exception as e:
             print(f"[FastAPI] Error seeding default data: {e}")
 
 class SearchRequest(BaseModel):
-    query: str = Field(..., example="What is the clinical efficacy and safety of Treatment X?")
+    query: str = Field(..., example="Is cancer curable?")
     top_k: Optional[int] = Field(10, ge=1, le=50)
-    freshness_threshold: Optional[float] = Field(0.3, ge=0.0, le=1.0)
+    freshness_threshold: Optional[float] = Field(0.0, ge=0.0, le=1.0)
     weights: Optional[Dict[str, float]] = Field(
         default={
             "w_sem": 0.25,
@@ -72,6 +74,18 @@ class SearchRequest(BaseModel):
 class DocumentIngestRequest(BaseModel):
     documents: List[Dict[str, Any]]
 
+class FeedbackRequest(BaseModel):
+    doc_id: str
+    vote: str = Field(..., example="trustworthy")
+
+def generate_citations(source_name: str, text_snippet: str, pub_date: str) -> Dict[str, str]:
+    year = pub_date[:4] if pub_date and len(pub_date) >= 4 else "2026"
+    title_short = text_snippet[:60] + "..." if len(text_snippet) > 60 else text_snippet
+    
+    apa = f"{source_name}. ({year}). {title_short} TrustRank Corpus Repository."
+    bibtex = f"@article{{{source_name.lower().replace(' ', '_')[:20]}_{year},\n  author = {{{source_name}}},\n  title = {{{title_short}}},\n  year = {{{year}}},\n  journal = {{TrustRank Verified Search}}\n}}"
+    return {"apa": apa, "bibtex": bibtex}
+
 @app.get("/health")
 def health_check():
     return {
@@ -80,9 +94,24 @@ def health_check():
         "chroma_status": "connected"
     }
 
+@app.post("/feedback")
+def submit_feedback(req: FeedbackRequest):
+    doc_id = req.doc_id
+    if doc_id not in USER_FEEDBACK_STORE:
+        USER_FEEDBACK_STORE[doc_id] = {"trustworthy": 0, "disputed": 0}
+
+    if req.vote.lower() == "trustworthy":
+        USER_FEEDBACK_STORE[doc_id]["trustworthy"] += 1
+    elif req.vote.lower() == "disputed":
+        USER_FEEDBACK_STORE[doc_id]["disputed"] += 1
+
+    return {
+        "message": f"Feedback recorded for {doc_id}",
+        "stats": USER_FEEDBACK_STORE[doc_id]
+    }
+
 @app.post("/seed")
 def seed_documents(req: Optional[DocumentIngestRequest] = None):
-    """Seed documents into vector database."""
     if req and req.documents:
         docs = req.documents
     else:
@@ -96,15 +125,14 @@ def seed_documents(req: Optional[DocumentIngestRequest] = None):
 @app.post("/search")
 def search_documents(req: SearchRequest):
     """
-    Executes the 5-dimension TrustRank Search Pipeline:
-    Returns structured results with relevance, reliability, freshness, contradiction, evidence & composite scores.
+    Executes 5-dimension TrustRank Search Pipeline with real-time factual knowledge retrieval.
     """
     start_time = time.time()
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query string cannot be empty.")
 
     top_k = req.top_k or 10
-    freshness_thresh = req.freshness_threshold if req.freshness_threshold is not None else 0.3
+    freshness_thresh = req.freshness_threshold if req.freshness_threshold is not None else 0.0
 
     raw_w = req.weights or {}
     w = {
@@ -115,44 +143,80 @@ def search_documents(req: SearchRequest):
         "w_evid": raw_w.get("w_evid", raw_w.get("wEvi", 0.20))
     }
 
-    # 1. Semantic Retrieval
-    retrieved_docs = retriever.search(query=req.query, top_k=top_k * 2)
-    total_candidates = len(retrieved_docs)
+    # 1. Fetch real-time live knowledge from Wikipedia / DuckDuckGo / LLM for this exact query
+    live_docs = get_live_evidence_for_query(req.query)
+    
+    # 2. Retrieve candidates from local index
+    local_retrieved = retriever.search(query=req.query, top_k=top_k * 2)
 
-    if not retrieved_docs:
-        query_time_ms = int((time.time() - start_time) * 1000)
-        return {
-            "query": req.query,
-            "total_candidates": 0,
-            "query_time_ms": query_time_ms,
-            "results": []
-        }
+    # Combine live topic knowledge + relevant local documents
+    combined_docs = []
+    seen_texts = set()
 
-    # 2. Freshness Filtering
-    fresh_docs = freshness_filter.filter_and_score(retrieved_docs, threshold=freshness_thresh)
+    # Priority to genuinely retrieved live knowledge for the query
+    for d in live_docs:
+        t_key = d["text"][:50].lower()
+        if t_key not in seen_texts:
+            seen_texts.add(t_key)
+            combined_docs.append(d)
 
-    # 3. Reliability & Evidence Scoring
+    for d in local_retrieved:
+        t_key = d["text"][:50].lower()
+        # Only include local docs if they have meaningful similarity to this query (> 0.30)
+        if t_key not in seen_texts and d.get("semantic_score", 0.0) >= 0.30:
+            seen_texts.add(t_key)
+            combined_docs.append(d)
+
+    # If still empty (e.g. offline and no matches), take top local docs
+    if not combined_docs:
+        combined_docs = local_retrieved
+
+    total_candidates = len(combined_docs)
+
+    # 3. Calculate dense & lexical relevance score for each doc against query
+    for doc in combined_docs:
+        # Re-verify semantic similarity with sentence transformer
+        query_vec = retriever.encode_query_cached(req.query)
+        doc_vec = retriever.model.encode(doc["text"], normalize_embeddings=True)
+        import numpy as np
+        sim = float(max(0.0, min(1.0, np.dot(query_vec, doc_vec))))
+        doc["semantic_score"] = round(sim, 4)
+        doc["dense_score"] = round(sim, 4)
+
+    # 4. Freshness Filtering & Scoring
+    fresh_docs = freshness_filter.filter_and_score(combined_docs, threshold=freshness_thresh)
+
+    # 5. Reliability & Evidence Scoring
     scored_docs = []
     for doc in fresh_docs:
         rel_data = reliability_scorer.score(doc, doc.get("semantic_score", 0.0))
         evid_data = evidence_scorer.score(doc)
 
+        fb = USER_FEEDBACK_STORE.get(doc["id"], {"trustworthy": 0, "disputed": 0})
+        user_boost = (fb["trustworthy"] * 0.05) - (fb["disputed"] * 0.08)
+        adj_rel = min(1.0, max(0.0, rel_data["reliability_score"] + user_boost))
+
         merged_doc = dict(doc)
-        merged_doc["reliability_score"] = rel_data["reliability_score"]
+        merged_doc["reliability_score"] = adj_rel
         merged_doc["evidence_score"] = evid_data["evidence_score"]
         merged_doc["evidence_quality"] = evid_data["evidence_quality"]
         merged_doc["recency"] = evid_data["recency"]
+        merged_doc["feedback_stats"] = fb
         scored_docs.append(merged_doc)
 
-    # 4. Contradiction Detection
+    # 6. Contradiction Detection
     nli_evaluated_docs = contradiction_detector.evaluate_documents(req.query, scored_docs)
 
-    # 5. Composite Ranking
+    # 7. Composite 5-Dimensional Ranking
     final_ranked_results = composite_ranker.rank(nli_evaluated_docs, custom_weights=w)
     final_results = final_ranked_results[:top_k]
 
     # Format output items cleanly for JavaScript frontend
     formatted_results = []
+    total_composite_sum = 0
+    flagged_count = 0
+    source_counts = {}
+
     for doc in final_results:
         breakdown = doc.get("dimension_breakdown", {})
         s_type = doc.get("source_type", "web").lower()
@@ -167,18 +231,27 @@ def search_documents(req: SearchRequest):
         else:
             cat_type = "web"
 
+        source_counts[cat_type] = source_counts.get(cat_type, 0) + 1
+
         pub_date = doc.get("timestamp", "")
         if pub_date and "T" in pub_date:
             pub_date = pub_date.split("T")[0]
 
         has_alert = doc.get("contradiction_alert", False)
-        contra_prob = doc.get("contradiction_prob", 0.0)
+        if has_alert:
+            flagged_count += 1
 
+        contra_prob = doc.get("contradiction_prob", 0.0)
         contra_details = None
         if has_alert:
-            contra_details = f"Conflict risk detected ({int(contra_prob*100)}%). Claim contradicts top peer evidence."
+            contra_details = f"Conflict risk detected ({int(contra_prob*100)}%). Claim contradicts empirical/consensus evidence."
 
-        explanation = f"Evaluated with semantic match {int(breakdown.get('relevance',0)*100)}%, source reliability {int(breakdown.get('reliability',0)*100)}%, and GRADE quality {int(breakdown.get('evidence_strength',0)*100)}%."
+        comp_score = doc.get("trust_rank_score", 0.0)
+        total_composite_sum += comp_score
+
+        explanation = f"Evaluated with semantic relevance {int(breakdown.get('relevance',0)*100)}%, source reliability {int(breakdown.get('reliability',0)*100)}%, and GRADE evidence {int(breakdown.get('evidence_strength',0)*100)}%."
+
+        citations = generate_citations(doc.get("source", "Unknown"), doc.get("text", ""), pub_date)
 
         formatted_results.append({
             "id": doc.get("id"),
@@ -196,16 +269,28 @@ def search_documents(req: SearchRequest):
                 "freshness": breakdown.get("freshness", 0.0),
                 "contradiction": breakdown.get("contradiction", 0.0),
                 "evidence": breakdown.get("evidence_strength", 0.0),
-                "composite": doc.get("trust_rank_score", 0.0)
+                "composite": comp_score
             },
-            "trust_rank_score": doc.get("trust_rank_score", 0.0),
+            "trust_rank_score": comp_score,
             "dimension_breakdown": breakdown,
             "contradiction_alert": has_alert,
             "contradictionAlert": has_alert,
             "contradiction_details": contra_details,
             "contradictionDetails": contra_details,
-            "explanation": explanation
+            "explanation": explanation,
+            "citations": citations,
+            "feedback": doc.get("feedback_stats", {"trustworthy": 0, "disputed": 0})
         })
+
+    avg_trust = (total_composite_sum / len(final_results)) if final_results else 0.0
+    overall_trust_index = int(avg_trust * 100)
+
+    if flagged_count == 0 and overall_trust_index >= 75:
+        consensus_status = "High Evidence Consensus ✅"
+    elif flagged_count > 0:
+        consensus_status = "Contested Claims / Conflict Flagged ⚠️"
+    else:
+        consensus_status = "Moderate / Mixed Evidence ℹ️"
 
     query_time_ms = int((time.time() - start_time) * 1000)
 
@@ -214,10 +299,16 @@ def search_documents(req: SearchRequest):
         "total_candidates": total_candidates,
         "total_results": len(formatted_results),
         "query_time_ms": query_time_ms,
+        "analytics": {
+            "overall_trust_index": overall_trust_index,
+            "consensus_status": consensus_status,
+            "flagged_contradictions": flagged_count,
+            "source_distribution": source_counts
+        },
         "results": formatted_results
     }
 
-# Mount static subdirectories for CSS, JS, Assets, and serve HTML at root /
+# Mount static subdirectories
 frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 if os.path.exists(frontend_dir):
     css_dir = os.path.join(frontend_dir, "css")

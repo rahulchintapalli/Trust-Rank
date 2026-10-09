@@ -23,9 +23,14 @@
         <span class="brand-tagline">Search that finds what's safe to believe</span>
       </div>
 
-      <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode">
-        🌙
-      </button>
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <button id="open-ingest-btn" style="font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-secondary);">
+          ➕ Ingest Custom Claim
+        </button>
+        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode">
+          🌙
+        </button>
+      </div>
     </div>
   </header>
 
@@ -107,8 +112,38 @@
       </div>
     </section>
 
-    <!-- Results Section -->
+    <!-- Query Trust Analytics Synthesis Banner -->
+    <section id="analytics-section" class="results-section" style="display: none; padding-bottom: 0;">
+      <div id="analytics-container" style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm);"></div>
+    </section>
+
+    <!-- Results Section & Filter Controls -->
     <section class="results-section">
+      <!-- Filter & Sort Control Bar -->
+      <div id="filter-bar" style="display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-right: 0.25rem;">Source Filter:</span>
+          <button class="filter-pill active" data-filter="all">All</button>
+          <button class="filter-pill" data-filter="academic">Academic</button>
+          <button class="filter-pill" data-filter="news">News</button>
+          <button class="filter-pill" data-filter="corpus">Corpus</button>
+          <button class="filter-pill" data-filter="social">Social</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <select id="sort-select" style="font-size: 0.85rem; padding: 0.35rem 0.6rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+            <option value="composite">Sort: TrustRank Score</option>
+            <option value="relevance">Sort: Relevance</option>
+            <option value="reliability">Sort: Reliability</option>
+            <option value="freshness">Sort: Freshness</option>
+          </select>
+
+          <button id="export-btn" style="font-size: 0.85rem; font-weight: 600; padding: 0.35rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--primary-blue);">
+            📥 Export Report
+          </button>
+        </div>
+      </div>
+
       <div id="results-meta-bar" class="results-meta-bar" style="display: none;"></div>
       <div id="results-grid" class="results-grid">
         <!-- Default Empty State -->
@@ -129,6 +164,44 @@
       </div>
     </section>
   </main>
+
+  <!-- Ingest Custom Claim Modal -->
+  <div id="ingest-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center; padding: 1rem;">
+    <div style="background: var(--bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--border-color); max-width: 550px; width: 100%; padding: 1.5rem; box-shadow: var(--shadow-lg);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">➕ Ingest Custom Claim / Document</h3>
+        <button id="close-ingest-btn" style="font-size: 1.2rem; color: var(--text-muted);">&times;</button>
+      </div>
+
+      <form id="ingest-form" style="display: flex; flex-direction: column; gap: 0.875rem;">
+        <div>
+          <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Document Text / Claim Snippet</label>
+          <textarea id="ingest-text" required rows="3" style="width: 100%; padding: 0.6rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem;" placeholder="e.g. Clinical trial shows Treatment Y improves survival by 40%..."></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div>
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Source Name</label>
+            <input type="text" id="ingest-source" required placeholder="e.g. Lancet Journal" style="width: 100%; padding: 0.5rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;">
+          </div>
+          <div>
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Source Type</label>
+            <select id="ingest-type" style="width: 100%; padding: 0.5rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;">
+              <option value="Academic">Academic</option>
+              <option value="News">News</option>
+              <option value="Corpus/Registry">Corpus/Registry</option>
+              <option value="Social">Social</option>
+              <option value="Web">Web</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" style="margin-top: 0.5rem; padding: 0.75rem; border-radius: var(--radius); background: var(--primary-blue); color: #fff; font-weight: 700; border: none; cursor: pointer;">
+          Index into TrustRank Store
+        </button>
+      </form>
+    </div>
+  </div>
 
   <!-- JavaScript Modules -->
   <script src="js/api.js"></script>
